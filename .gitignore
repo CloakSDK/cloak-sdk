@@ -1,0 +1,26 @@
+# Build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+.env
+*.local
+
+# Solana keypairs (NEVER commit private keys)
+*-keypair.json
+*.keypair
+
+# Anchor
+.anchor/
+
+# Node (if any)
+node_modules/

@@ -1,0 +1,31 @@
+[package]
+name = "cloak-stealth"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cloak Anchor program for stealth address announcements"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+# Silence warnings from Anchor/Solana macros about unknown cfg values
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = [
+    'cfg(feature, values("anchor-debug", "custom-heap", "custom-panic"))',
+] }
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { workspace = true }
+solana-program = { workspace = true }
+borsh = { workspace = true }
+
+[dev-dependencies]
+solana-sdk = { workspace = true }
+tokio = { workspace = true }

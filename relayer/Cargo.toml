@@ -1,0 +1,35 @@
+[package]
+name = "cloak-relayer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cloak Relayer - Submits stealth transactions on behalf of users"
+
+[[bin]]
+name = "cloak-relayer"
+path = "src/main.rs"
+
+[dependencies]
+# Solana
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+
+# HTTP server
+axum = { workspace = true }
+tower-http = { workspace = true }
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bs58 = { workspace = true }
+borsh = { workspace = true }
+sha2 = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Utilities
+bincode = "1.3"
+hex = { workspace = true }
+dirs = { workspace = true }

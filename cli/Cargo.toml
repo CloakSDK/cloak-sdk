@@ -1,0 +1,39 @@
+[package]
+name = "cloak-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI for Cloak SDK - Stealth Addresses on Solana"
+
+[[bin]]
+name = "cloak"
+path = "src/main.rs"
+
+[dependencies]
+cloak-sdk = { path = "../crates/core" }
+
+# Solana
+solana-sdk = { workspace = true }
+solana-client = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bs58 = { workspace = true }
+borsh = { workspace = true }
+sha2 = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# HTTP client (for relayer)
+reqwest = { workspace = true }
+bincode = { workspace = true }
+
+# Utilities
+dirs = { workspace = true }
+hex = { workspace = true }
