@@ -2,28 +2,25 @@
 
 **Privacy-preserving stealth addresses for Solana.**
 
-Cloak SDK enables private payments on Solana using stealth addresses. Senders can transfer SOL to unique one-time addresses that only the intended recipient can detect and spend from, without revealing the recipient's identity on-chain.
+Cloak is a complete privacy protocol for Solana: stealth addresses, relayer network for sender privacy, and zero-knowledge proofs for hidden amounts. Deployed on Solana Devnet.
+
+**Program ID:** `AaJF9TTgTPqRTuXfnQnVvBihpYwYUAYroW984foWyVJ`
 
 ## Features
 
-- **Stealth Addresses** - Generate unique one-time addresses for each payment
-- **Unlinkable Payments** - Observers cannot connect payments to your public identity
-- **View Key Delegation** - Share viewing keys for watch-only wallets
-- **Payment History** - Track and label payments with local persistence
-- **Batch Scanning** - Efficiently scan multiple announcements at once
-- **Ed25519 Compatible** - Works with Solana's native key format
-- **Anchor Program** - Ready-to-deploy on-chain announcement registry
+- **Stealth Addresses** — ECDH-derived one-time addresses for every payment, completely unlinkable on-chain
+- **Relayer Network** — Submit transactions through a relayer to hide your wallet address
+- **Hidden Amounts** — Pedersen commitments + Groth16 zk-SNARKs (BN254) to hide payment amounts
+- **View Key Delegation** — Share viewing keys for watch-only wallets without exposing spending keys
+- **On-chain Registry** — Anchor program with per-announcement PDAs for unlimited scalability
+- **Full CLI** — Init, send, scan, spend, history — with `--private` and `--relayer` modes
 
 ## Installation
 
-Add to your `Cargo.toml`:
-
 ```toml
 [dependencies]
-cloak-sdk = "0.2"
+cloak-sdk = "1.0"
 ```
-
-Or install via cargo:
 
 ```bash
 cargo add cloak-sdk
@@ -31,199 +28,153 @@ cargo add cloak-sdk
 
 ## Quick Start
 
-### Receiver: Generate a Stealth Meta-Address
+### Generate a Stealth Identity
 
 ```rust
-use cloak_sdk::prelude::*;
+use cloak_sdk::StealthMetaAddress;
 
-// Generate new stealth meta-address
 let meta = StealthMetaAddress::generate();
-
-// Share this publicly to receive payments
-let public_meta = meta.to_public();
-println!("My stealth address: {}", public_meta.encode());
-
-// Save privately (contains spending key!)
+println!("Share this: {}", meta.to_public_string());
 meta.save_to_file("~/.cloak/keys.json")?;
 ```
 
-### Sender: Create a Stealth Payment
+### Send a Stealth Payment
 
 ```rust
-use cloak_sdk::prelude::*;
+use cloak_sdk::{PublicMetaAddress, StealthPayment};
 
-// Parse receiver's public meta-address
-let public_meta = PublicMetaAddress::decode("st:sol:...")?;
+let recipient = PublicMetaAddress::from_string("stealth1...")?;
+let payment = StealthPayment::create(&recipient, 1_000_000_000)?;
 
-// Create stealth payment
-let payment = StealthPayment::create(&public_meta)?;
-
-println!("Send SOL to: {}", payment.stealth_address);
-println!("Ephemeral key: {}", hex::encode(&payment.ephemeral_pubkey));
-
-// Transfer SOL to payment.stealth_address
-// Publish payment.ephemeral_pubkey to the registry
+// payment.stealth_address  — where to send SOL
+// payment.ephemeral_pubkey — publish on-chain for recipient detection
 ```
 
-### Receiver: Detect and Spend
+### Send with Hidden Amount (zk-SNARK)
 
 ```rust
-use cloak_sdk::prelude::*;
+use cloak_sdk::zk::{self, AmountCommitment};
 
-// Load your meta-address
-let meta = StealthMetaAddress::load_from_file("~/.cloak/keys.json")?;
+let (pk, _pvk) = zk::setup()?;
+let commitment = AmountCommitment::commit(amount);
+let proof = zk::prove(&pk, amount, &commitment)?;
 
-// Check if a payment is for you
-if let Some(_) = meta.try_detect(&ephemeral_pubkey)? {
-    // Derive the keypair to spend
-    let keypair = StealthKeypair::derive(&meta, &ephemeral_pubkey)?;
+// commitment + proof go on-chain, amount stays private
+```
 
-    // Use keypair.to_solana_keypair() to sign transactions
-    println!("Can spend from: {}", keypair.address());
+### Scan and Spend
+
+```rust
+use cloak_sdk::{Scanner, ScannerConfig, StealthKeypair};
+
+let scanner = Scanner::with_config(&meta, ScannerConfig {
+    program_id,
+    ..Default::default()
+});
+let payments = scanner.scan(rpc_url).await?;
+
+for payment in payments {
+    let keypair = StealthKeypair::derive(&meta, &payment.ephemeral_pubkey)?;
+    let solana_kp = keypair.to_solana_keypair()?;
+    // Sign transactions with solana_kp
 }
 ```
 
-## Enhanced Scanning (v0.2)
+## CLI
 
-### View Key Delegation
+```bash
+cargo install --path cli
 
-Delegate viewing capability to watch-only wallets without exposing spending keys:
+# Generate stealth identity
+cloak init
 
-```rust
-use cloak_sdk::{StealthMetaAddress, ViewingKey, ViewingKeyScanner};
+# Send SOL privately
+cloak --program-id <PROGRAM_ID> send <meta-address> 0.5
 
-// Create a viewing key from your meta-address
-let meta = StealthMetaAddress::load_from_file("~/.cloak/keys.json")?;
-let viewing_key = ViewingKey::from_meta_address(&meta, Some("Mobile Wallet".to_string()));
+# Send with hidden amount (zk-SNARK)
+cloak --program-id <PROGRAM_ID> send <meta-address> 0.5 --private
 
-// Export for watch-only wallet
-viewing_key.save_to_file("viewing_key.json")?;
+# Send through relayer (hidden sender)
+cloak --program-id <PROGRAM_ID> send <meta-address> 0.5 --relayer http://localhost:3000
 
-// Watch-only wallet can scan without spending capability
-let vk = ViewingKey::load_from_file("viewing_key.json")?;
-let scanner = ViewingKeyScanner::new(&vk);
+# Scan for incoming payments
+cloak --program-id <PROGRAM_ID> scan
 
-for announcement in announcements {
-    if let Some(payment) = scanner.try_detect(&announcement.ephemeral_pubkey, &announcement.stealth_address)? {
-        println!("Detected payment: {} lamports", payment.amount);
-        // Note: Cannot spend - only viewing
-    }
-}
+# Spend from a stealth address
+cloak --program-id <PROGRAM_ID> spend <stealth-address> <destination> all --ephemeral <hex>
+
+# View payment history
+cloak history --unspent
 ```
 
-### Payment History
-
-Track detected payments with labels and persistence:
-
-```rust
-use cloak_sdk::{PaymentHistory, Scanner};
-
-// Create scanner with history
-let meta = StealthMetaAddress::load_from_file("~/.cloak/keys.json")?;
-let scanner = Scanner::new(&meta);
-let mut history = PaymentHistory::new();
-
-// Scan with automatic history tracking
-let new_payments = scanner.scan_with_history(&announcements, &mut history)?;
-println!("Found {} new payments", new_payments.len());
-
-// Label a payment
-history.label_payment(&stealth_address.to_string(), "Payment from Alice");
-
-// Mark as spent
-history.mark_spent(&stealth_address.to_string());
-
-// Persist history
-history.save_to_file("~/.cloak/history.json")?;
-
-// Load history on next run
-let history = PaymentHistory::load_from_file("~/.cloak/history.json")?;
-```
-
-### Batch Scanning
-
-Efficiently scan multiple announcements:
-
-```rust
-use cloak_sdk::Scanner;
-
-let scanner = Scanner::new(&meta);
-
-// Scan a batch of announcements
-let detected = scanner.scan_announcements_batch(&announcements)?;
-
-for payment in detected {
-    println!("Payment to {} - {} lamports", payment.stealth_address, payment.amount);
-}
-```
-
-## How It Works
-
-1. **Receiver** generates a stealth meta-address (spending + viewing keypairs) and shares the public portion
-2. **Sender** uses the meta-address to derive a unique stealth address and ephemeral keypair
-3. **Sender** transfers SOL to the stealth address and publishes the ephemeral public key
-4. **Receiver** scans ephemeral keys, detects payments meant for them, and derives the spending key
-
-The cryptographic scheme uses ECDH (Elliptic Curve Diffie-Hellman) to create shared secrets that allow the receiver to derive the same stealth address and spending key that the sender generated.
-
-## Project Structure
+## Architecture
 
 ```
 cloak-sdk/
 ├── crates/
-│   ├── core/       # Main SDK library (cloak-sdk)
-│   └── program/    # Anchor program (cloak-program)
-└── cli/            # Command-line interface (cloak)
+│   ├── core/          # Main SDK library (cloak-sdk)
+│   │   ├── address.rs     # Stealth address derivation (ECDH)
+│   │   ├── keys.rs        # Meta-address generation & management
+│   │   ├── scanner.rs     # On-chain payment detection
+│   │   ├── spend.rs       # Spending key derivation
+│   │   └── zk.rs          # Groth16 proofs & Pedersen commitments
+│   └── program/       # Anchor on-chain program (cloak-stealth)
+│       ├── lib.rs         # Instructions: send_stealth, send_stealth_relayed,
+│       │                  #   send_stealth_private, announce, close_announcement
+│       └── state.rs       # AnnouncementAccount, PrivateAnnouncementAccount,
+│                          #   AnnouncementCounter
+├── cli/               # Command-line interface (cloak)
+├── relayer/           # Axum HTTP relayer server (cloak-relayer)
+└── Anchor.toml        # Anchor config (devnet)
 ```
 
-## CLI Usage
+## On-chain Program
+
+Anchor program with 5 instructions:
+
+| Instruction | Description |
+|---|---|
+| `initialize` | Create the global announcement counter PDA |
+| `send_stealth` | Transfer SOL + create announcement PDA |
+| `send_stealth_relayed` | Relayer pays rent, user signs transfer (sender privacy) |
+| `send_stealth_private` | Hidden amount with Pedersen commitment + Groth16 proof |
+| `announce` | Publish ephemeral key without transferring SOL |
+| `close_announcement` | Reclaim rent from processed announcements |
+
+Each announcement is stored as its own PDA (`seeds = [b"announcement", index.to_le_bytes()]`), indexed by a global counter. No circular buffers, no limits.
+
+## Relayer
+
+The relayer is an HTTP server that submits transactions on behalf of users:
 
 ```bash
-# Install
-cargo install --path cli
-
-# Generate new stealth meta-address
-cloak init
-
-# Show your public meta-address
-cloak address
-
-# Send SOL to a stealth address
-cloak send <recipient-meta-address> <amount>
-
-# Check balance
-cloak balance <address>
+# Start the relayer
+SOLANA_RPC_URL=https://api.devnet.solana.com \
+CLOAK_PROGRAM_ID=AaJF9TTgTPqRTuXfnQnVvBihpYwYUAYroW984foWyVJ \
+RELAYER_KEYPAIR=~/.config/solana/relayer.json \
+cargo run --bin cloak-relayer
 ```
 
-## Anchor Program
+**How it works:** The relayer pays for the announcement PDA rent and submits the transaction. The user only signs the SOL transfer. On-chain, the transaction appears to come from the relayer, hiding the sender's identity.
 
-The `cloak-program` provides an on-chain registry for stealth payment announcements:
+Endpoints: `POST /build-relay`, `POST /relay`, `GET /health`
 
-- `initialize` - Create the announcement registry (PDA)
-- `send_stealth` - Transfer SOL + register announcement in one transaction
-- `announce` - Register an announcement without transfer
+## Zero-Knowledge Proofs
+
+Cloak uses Groth16 on BN254 to hide payment amounts:
+
+- **Pedersen Commitment:** `C = amount + blinding * H` in the BN254 scalar field
+- **R1CS Circuit:** Proves knowledge of `amount` and `blinding`, and that `amount > 0`
+- **On-chain:** Only the 32-byte commitment and proof (up to 256 bytes) are stored
+- **Verification:** Anyone can verify the proof without knowing the amount
 
 ## Security
 
-- **Private keys** are never transmitted or stored on-chain
-- **Viewing keys** allow detection without spending capability
-- **Spending keys** are derived deterministically from the shared secret
-- Uses SHA-256 for key derivation with domain separation
-
-## Changelog
-
-### v0.2.0
-- **View Key Delegation** - Export viewing keys for watch-only wallets
-- **Payment History** - Local persistence with labels and spent tracking
-- **Batch Scanning** - `scan_announcements_batch()` for efficient bulk scanning
-- **Incremental Scanning** - `scan_with_history()` to avoid re-processing
-- **Payment Labels** - Add custom labels and memos to detected payments
-
-### v0.1.0
-- Initial release with stealth address generation
-- ECDH-based payment detection
-- Solana Ed25519 compatibility
-- Basic scanner implementation
+- Private keys are never transmitted or stored on-chain
+- Viewing keys allow detection without spending capability
+- Spending keys are derived deterministically from ECDH shared secrets
+- SHA-256 key derivation with domain separation
+- Groth16 proofs are zero-knowledge: verifiers learn nothing about the amount
 
 ## License
 
