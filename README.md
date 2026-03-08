@@ -1,5 +1,10 @@
 # Cloak SDK
 
+[![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Solana](https://img.shields.io/badge/Solana-9945FF?style=for-the-badge&logo=solana&logoColor=white)](https://solana.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+[![Devnet](https://img.shields.io/badge/Devnet-Live-brightgreen?style=for-the-badge)](https://explorer.solana.com/address/AaJF9TTgTPqRTuXfnQnVvBihpYwYUAYroW984foWyVJ?cluster=devnet)
+
 **Privacy-preserving stealth addresses for Solana.**
 
 Cloak is a complete privacy protocol for Solana: stealth addresses, relayer network for sender privacy, and zero-knowledge proofs for hidden amounts. Deployed on Solana Devnet.
